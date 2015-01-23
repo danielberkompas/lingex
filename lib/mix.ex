@@ -14,13 +14,14 @@ defmodule Mix.Tasks.Lingex do
     zip_files = Enum.map files, fn file -> Kernel.binary_to_list file end
     {:ok, {_, zip_data}} = :zip.zip(any_name, zip_files, [:memory])
 
-    Mix.shell.info "Uploading project archive [#{size zip_data} byte(s)]"
+    Mix.shell.info "Uploading project archive [#{Kernel.bit_size zip_data} byte(s)]"
 
     :ok = call_build_service :put, '/projects/#{project}', [],
                   {'application/zip', zip_data}, copts
     Mix.shell.info "Project archive uploaded"
 
-    apps = lc {:import_lib, app} inlist bopts, do: app
+    apps = Enum.filter_map(bopts, fn({type, app}) -> type == :import_lib end, fn({_, app}) -> app end)
+    #apps = lc {:import_lib, app} inlist bopts, do: app
     app_list = Enum.map_join apps, ",", fn(x) -> "\"#{x}\"" end
 
     if bopts[:elixir_lib] do
@@ -73,8 +74,8 @@ defmodule Mix.Tasks.Lingex do
                       :none, copts do
     {:ok, resp_body} ->
       image_file = "vmling"
-      image_bin = list_to_binary resp_body
-      Mix.shell.info "Saving image to #{image_file} [#{size image_bin} byte(s)]"
+      image_bin = String.Chars.to_string resp_body
+      Mix.shell.info "Saving image to #{image_file} [#{Kernel.bit_size image_bin} byte(s)]"
       File.write! image_file, image_bin
       Mix.shell.info "LBS: image saved to #{image_file}"
 
@@ -138,6 +139,7 @@ defmodule Mix.Tasks.Lingex do
   def collect_files(config, opts) do
     compile_path = config[:compile_path]
 
+    IO.puts "COMPILE PATH: #{compile_path}"
     files = Path.wildcard Path.join compile_path, "*"
 
     deps_path = config[:deps_path]
@@ -145,7 +147,8 @@ defmodule Mix.Tasks.Lingex do
       collect_dep_files(deps_path, x, acc) 
     end
 
-    misc_paths = lc {:import, path} inlist opts, do: path
+    misc_paths = Enum.filter_map(opts, fn({type, path}) -> type == :import end, fn({_, path}) -> path end)
+    #misc_paths = lc {:import, path} inlist opts, do: path
     Enum.reduce misc_paths, files, fn(path, acc) ->
       acc ++ Path.wildcard path
     end
@@ -170,7 +173,7 @@ defmodule Mix.Tasks.Lingex.Build do
   """
 
   def run(_args) do
-    config = Mix.project
+    config = Mix.Project.config
     opts = config[:lingex_opts]
 
     files = Mix.Tasks.Lingex.collect_files config, opts
@@ -187,7 +190,7 @@ defmodule Mix.Tasks.Lingex.Image do
   """
 
   def run(_args) do
-    config = Mix.project
+    config = Mix.Project.config
     opts = config[:lingex_opts]
     project = config[:app]
     Mix.Tasks.Lingex.retrieve_image project, opts
@@ -202,12 +205,12 @@ defmodule Mix.Tasks.Lingex.Build_image do
   """
 
   def run(_args) do
-    config = Mix.project
+    config = Mix.Project.config
     opts = config[:lingex_opts]
 
     files = Mix.Tasks.Lingex.collect_files config, opts
 
-    project = config[:app]  
+    project = config[:app]
     Mix.Tasks.Lingex.start_build project, files, opts
 
     case Mix.Tasks.Lingex.get_build_status project, opts do
